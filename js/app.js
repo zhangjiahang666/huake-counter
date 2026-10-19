@@ -84,7 +84,11 @@
       } catch (e) {
         canPersist = false;
         memoryFallback = raw;
-        showStorageWarn();
+        var quota = e && (e.name === "QuotaExceededError" || e.code === 22 || e.code === 1014);
+        showStorageWarn(quota
+          ? "⚠️ 本地存储已满（浏览器上限约 5MB）：本次改动没能保存。请删掉一些封面图 / 收据，或先「备份」再清理，然后刷新页面。"
+          : "⚠️ 当前为临时模式（浏览器无法保存），刷新后数据会丢失。");
+        toast(quota ? "本地存储已满，本次改动未能保存" : "浏览器无法持久保存，已切到临时模式");
       }
     } else {
       memoryFallback = raw;
@@ -857,7 +861,25 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { t.classList.add("hidden"); }, 2200);
   }
-  function showStorageWarn() { var e = $("storage-warn"); if (e) e.classList.remove("hidden"); }
+  function showStorageWarn(msg) {
+    var e = $("storage-warn");
+    if (!e) return;
+    if (msg) e.textContent = msg;
+    e.classList.remove("hidden");
+  }
+
+  /* ---------- 本地存储用量 ---------- */
+  function storageBytes() {
+    try { return new Blob([JSON.stringify(state)]).size; }
+    catch (e) { return JSON.stringify(state).length; }
+  }
+  function renderStorageUsage() {
+    var el = $("storage-usage");
+    if (!el) return;
+    var mb = storageBytes() / 1048576;
+    el.textContent = "本地存储已用 " + mb.toFixed(2) + " MB（浏览器上限约 5 MB）";
+    el.classList.toggle("warn", mb >= 4);
+  }
 
   /* ---------- 主题 ---------- */
   function applyTheme() {
@@ -880,6 +902,7 @@
     if ($("cards")) renderCards();
     if ($("history")) renderHistory();
     if ($("filter-card")) renderFilter();
+    if ($("storage-usage")) renderStorageUsage();
     if ($("account-panel")) renderAccount();
   }
 
@@ -1245,19 +1268,63 @@
     toast(moved ? ("已移动 " + moved + " 张到" + (folderId ? "「" + folderName(folderId) + "」" : "未分组")) : "没有需要移动的卡片");
   }
 
+  /* 批量排序：勾选卡片整体上移/下移一位（触屏替代拖拽） */
+  function batchMoveDir(dir) {
+    var ids = [];
+    for (var k in selectedIds) if (selectedIds[k]) ids.push(k);
+    if (ids.length === 0) { toast("请先选择课时卡"); return; }
+    var cards = state.cards;
+    function isSel(id) { return !!selectedIds[id]; }
+    if (dir < 0) {
+      // 上移：按数组顺序从前到后，遇「前一个未勾选」就交换
+      for (var i = 0; i < cards.length; i++) {
+        if (!isSel(cards[i].id)) continue;
+        if (i === 0) break;
+        var prev = cards[i - 1];
+        if (isSel(prev.id)) continue;
+        cards[i - 1] = cards[i]; cards[i] = prev;
+      }
+    } else {
+      // 下移：从后到前，遇「后一个未勾选」就交换
+      for (var j = cards.length - 1; j >= 0; j--) {
+        if (!isSel(cards[j].id)) continue;
+        if (j === cards.length - 1) break;
+        var next = cards[j + 1];
+        if (isSel(next.id)) continue;
+        cards[j + 1] = cards[j]; cards[j] = next;
+      }
+    }
+    save(); renderCards();
+    toast(dir < 0 ? "已上移" : "已下移");
+  }
+
   function renderHistory() {
     var ul = $("history");
     if (!ul) return;
     ul.innerHTML = "";
     var fid = $("filter-card") ? $("filter-card").value : "";
     var mid = $("filter-month") ? $("filter-month").value : "";
+    var q = $("history-search") ? $("history-search").value.trim().toLowerCase() : "";
     var list = state.history.filter(function (h) {
       if (fid && h.cardId !== fid) return false;
       var mkey = (h.lessonDate || (h.date || "")).slice(0, 7);
       if (mid && mkey !== mid) return false;
+      if (q) {
+        var hay = (h.cardName + " " + (h.note || "")).toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
       return true;
     });
-    $("history-empty").classList.toggle("hidden", list.length > 0);
+    var emptyEl = $("history-empty");
+    if (emptyEl) {
+      emptyEl.classList.toggle("hidden", list.length > 0);
+      var hint = emptyEl.querySelector(".empty-hint");
+      if (hint) {
+        hint.textContent = (q || fid || mid)
+          ? "没有匹配的记录，换个条件试试"
+          : "划掉或加课后，这里会留下明细";
+      }
+    }
     list.slice().reverse().forEach(function (h) {
       var minus = h.delta < 0;
       var dateLabel = h.lessonDate ? ("上课 " + h.lessonDate) : ("记录 " + fmtDate(h.date));
@@ -1361,14 +1428,49 @@
     }
     if (box) box.classList.toggle("hidden", !cardImageData);
   }
+  /* 图片压缩：>300KB 的图用 canvas 缩到约 1000px 宽、JPEG 0.82，
+     减小 localStorage 占用；canvas 不可用（如老浏览器）或失败时回退原图。 */
+  var IMG_MAX_W = 1000;
+  var IMG_SMALL_BYTES = 300 * 1024;
+  function compressImageFile(file, cb) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var original = String(reader.result);
+      if (file.size <= IMG_SMALL_BYTES) { cb(original); return; }
+      var canvas = document.createElement("canvas");
+      var ctx = canvas && canvas.getContext ? canvas.getContext("2d") : null;
+      if (!ctx) { cb(original); return; }
+      var img = new Image();
+      var done = false;
+      var timer = setTimeout(function () {
+        if (!done) { done = true; cb(original); }
+      }, 2000);
+      img.onload = function () {
+        if (done) return;
+        done = true; clearTimeout(timer);
+        try {
+          var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+          if (!w || !h) { cb(original); return; }
+          var scale = Math.min(1, IMG_MAX_W / Math.max(w, h));
+          canvas.width = Math.max(1, Math.round(w * scale));
+          canvas.height = Math.max(1, Math.round(h * scale));
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          cb(canvas.toDataURL("image/jpeg", 0.82));
+        } catch (e) { cb(original); }
+      };
+      img.onerror = function () {
+        if (!done) { done = true; clearTimeout(timer); cb(original); }
+      };
+      img.src = original;
+    };
+    reader.onerror = function () { toast("读取图片失败"); };
+    reader.readAsDataURL(file);
+  }
   function readCardImage(file) {
     if (!file) return;
     if (!/^image\//.test(file.type)) { toast("请选择图片文件"); return; }
     if (file.size > MAX_ATTACH_BYTES) { toast("图片超过 1MB，请压缩后再上传"); return; }
-    var reader = new FileReader();
-    reader.onload = function () { setCardImagePreview(String(reader.result)); };
-    reader.onerror = function () { toast("读取图片失败"); };
-    reader.readAsDataURL(file);
+    compressImageFile(file, function (data) { setCardImagePreview(data); });
   }
 
   /* ---------- 收据（挂在每张课时卡） ---------- */
@@ -1442,18 +1544,24 @@
     var isSheet = /\.csv$/i.test(name) || /text\/csv/i.test(file.type);
     if (!isImage && !isSheet) { toast("收据仅支持图片或 CSV 表格"); return; }
     if (file.size > MAX_ATTACH_BYTES) { toast("文件超过 1MB，请压缩后再上传"); return; }
-    var reader = new FileReader();
-    reader.onload = function () {
+    function pushReceipt(data, size) {
       c.receipts.push({
         id: uid(), kind: isImage ? "image" : "sheet", name: name,
-        data: String(reader.result), size: file.size,
+        data: data, size: size,
         addedBy: "", addedName: "",
         date: new Date().toISOString()
       });
       save(); renderReceipts(); toast("已上传收据：" + name);
-    };
+    }
+    if (isImage) {
+      // 图片同样先压缩，节省 localStorage
+      compressImageFile(file, function (data) { pushReceipt(data, file.size); });
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function () { pushReceipt(String(reader.result), file.size); };
     reader.onerror = function () { toast("读取文件失败"); };
-    if (isImage) reader.readAsDataURL(file); else reader.readAsText(file);
+    reader.readAsText(file);
   }
 
   function delReceipt(aid) {
@@ -2030,6 +2138,8 @@
     on("btn-manage", "click", function () { toggleManage(); });
     on("batch-all", "click", selectAllVisible);
     on("batch-move", "click", openBatchMove);
+    on("batch-up", "click", function () { batchMoveDir(-1); });
+    on("batch-down", "click", function () { batchMoveDir(1); });
     on("batch-cancel", "click", function () { toggleManage(false); });
     on("folder-bar", "click", function (e) {
       var ren = e.target.closest("[data-folder-rename]");
@@ -2092,6 +2202,7 @@
     on("btn-undo-last", "click", undoLast);
     on("filter-card", "change", renderHistory);
     on("filter-month", "change", renderHistory);
+    on("history-search", "input", renderHistory);
     on("btn-card-image", "click", function () { var f = $("card-image"); if (f) f.click(); });
     on("btn-card-image-del", "click", function () { setCardImagePreview(""); });
     on("card-image", "change", function (e) { if (e.target.files && e.target.files[0]) readCardImage(e.target.files[0]); e.target.value = ""; });
@@ -2146,6 +2257,26 @@
   startSync();
   setInterval(syncTick, 8000);
   document.addEventListener("visibilitychange", function () { if (!document.hidden) syncTick(); });
+
+  /* PWA：注册 Service Worker（file:// 或不支持时静默跳过） */
+  if ("serviceWorker" in navigator && (location.protocol === "http:" || location.protocol === "https:")) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function () { /* 离线不可用不影响主流程 */ });
+    });
+  }
+
+  /* 多标签同步：同一浏览器的其他标签改了数据，本标签自动采用（云端待传时不覆盖） */
+  window.addEventListener("storage", function (e) {
+    if (!e || e.key !== STORAGE_KEY || !e.newValue) return;
+    if (state.meta && state.meta.pendingSync) return;   // 本标签有未传改动：不覆盖
+    try {
+      var incoming = JSON.parse(e.newValue);
+      if (!incoming || typeof incoming !== "object") return;
+      if (incoming.meta && state.meta && incoming.meta.syncedAt && incoming.meta.syncedAt === state.meta.syncedAt) return;
+      state = normalizeState(incoming);
+      render();
+    } catch (err) { /* 解析失败：保持现状 */ }
+  });
 
   function syncTick() {
     if (CLOUD.mode) cloudPull();

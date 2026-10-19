@@ -1,16 +1,21 @@
 // 跨页 jsdom 冒烟测试：加载 4 个页面 + app.js，验证无报错、导航高亮、核心数据流、缺元素安全
 const fs = require('fs');
 const path = require('path');
-const { JSDOM, VirtualConsole } = require('C:/Users/DELL/.workbuddy/binaries/node/workspace/node_modules/jsdom');
+// jsdom 解析：优先本地 node_modules（CI 环境），回退到本机工作区（开发环境）
+let jsdomMod = 'jsdom';
+try { require.resolve('jsdom'); } catch (e) {
+  jsdomMod = 'C:/Users/DELL/.workbuddy/binaries/node/workspace/node_modules/jsdom';
+}
+const { JSDOM, VirtualConsole } = require(jsdomMod);
 
-const ROOT = 'C:/Users/DELL/WorkBuddy/生活/划课网站';
+const ROOT = path.join(__dirname, '..');
 let JS = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
 // 仅测试用：剥掉 IIFE 外壳 + 追加导出钩子，暴露内部函数供断言（不改源文件）
 JS = JS.replace(/^\s*\/\*[\s\S]*?\*\/\s*/, '');
 JS = JS.replace(/^\s*\(function\s*\(\)\s*\{/, '');
 JS = JS.replace(/^\s*"use strict";\s*/, '');
 JS = JS.replace(/\}\)\(\);\s*$/, '');
-JS += '\n;window.__T = { doMerge: doMerge, sanitizeImport: sanitizeImport, undoLast: undoLast, render: render, renderCards: renderCards, renderHistory: renderHistory, renderOverview: renderOverview, renderRatio: renderRatio, renderRecent: renderRecent, renderFilter: renderFilter, monthlyAutoBackup: monthlyAutoBackup, parseCsv: parseCsv, renderReceipts: renderReceipts, normalizeState: normalizeState, save: save, saveLocal: saveLocal, cloudLoad: cloudLoad, cloudPush: cloudPush, cloudPull: cloudPull, cloudDownload: cloudDownload, cloudLogout: cloudLogout, cloud: function () { return CLOUD; } };\n';
+JS += '\n;window.__T = { doMerge: doMerge, sanitizeImport: sanitizeImport, undoLast: undoLast, render: render, renderCards: renderCards, renderHistory: renderHistory, renderOverview: renderOverview, renderRatio: renderRatio, renderRecent: renderRecent, renderFilter: renderFilter, monthlyAutoBackup: monthlyAutoBackup, parseCsv: parseCsv, renderReceipts: renderReceipts, readCardImage: readCardImage, normalizeState: normalizeState, save: save, saveLocal: saveLocal, cloudLoad: cloudLoad, cloudPush: cloudPush, cloudPull: cloudPull, cloudDownload: cloudDownload, cloudLogout: cloudLogout, cloud: function () { return CLOUD; } };\n';
 
 const pages = ['index.html', 'cards.html', 'history.html', 'settings.html'];
 let pass = 0, fail = 0;
@@ -137,7 +142,7 @@ console.log('\n=== 历史展示：操作人显示已按需隐藏 ===');
   const { window } = loadPage('history.html');
   const D = window.document;
   window.eval('state.cards=[{id:"c1",name:"瑜伽",total:10,used:0,lowWarn:3,note:"",color:"#4f7cff",createdAt:""}];' +
-    'state.history=[{id:"h1",cardId:"c1",cardName:"瑜伽",date:new Date().toISOString(),delta:-1,lessonDate:"",note:"",operatorId:"a",operatorName:"小红"},' +
+    'state.history=[{id:"h1",cardId:"c1",cardName:"瑜伽",date:new Date().toISOString(),delta:-1,lessonDate:"",note:"第一节课",operatorId:"a",operatorName:"小红"},' +
     '{id:"h2",cardId:"c1",cardName:"瑜伽",date:new Date().toISOString(),delta:-2,lessonDate:"",note:"",operatorId:"",operatorName:""}]; save();');
   window.__T.render();
   const subs = D.querySelectorAll('#history .hist-sub');
@@ -151,6 +156,19 @@ console.log('\n=== 历史展示：操作人显示已按需隐藏 ===');
   msel.value = thisM;
   window.__T.renderHistory();
   ok(D.querySelectorAll('#history li').length === 2, '按当前月份筛选仍显示 2 条');
+  msel.value = '';
+  // 关键词搜索：卡名 / 备注
+  const hs = D.getElementById('history-search');
+  hs.value = '瑜伽'; window.__T.renderHistory();
+  ok(D.querySelectorAll('#history li').length === 2, '搜索卡名命中 2 条');
+  hs.value = '第一节课'; window.__T.renderHistory();
+  ok(D.querySelectorAll('#history li').length === 1, '搜索备注只命中 1 条');
+  hs.value = '不存在的词'; window.__T.renderHistory();
+  ok(D.querySelectorAll('#history li').length === 0, '搜索无结果时不显示记录');
+  ok(!D.getElementById('history-empty').classList.contains('hidden') &&
+    D.getElementById('history-empty').textContent.indexOf('没有匹配') >= 0, '历史空状态提示「没有匹配的记录」');
+  hs.value = ''; window.__T.renderHistory();
+  ok(D.querySelectorAll('#history li').length === 2, '清空搜索恢复 2 条');
 }
 
 // ---- 2e) 课时卡收据：cards.html ----
@@ -448,6 +466,87 @@ console.log('\n=== 搜索 / 批量移动 / 课包（cards.html）===');
     'sanitizeImport 解析课包字段');
   const clean2 = window.__T.sanitizeImport({ cards: [{ id: 'p2', name: '旧卡', total: 5, used: 0 }], history: [] });
   ok(clean2.cards[0].kind === 'lesson' && clean2.cards[0].price === 0, '旧备份无 kind 时默认识别为课时');
+}
+
+// ---- 2h) 批量排序 / 存储用量 / 多标签同步 / 图片压缩 / PWA 文件 ----
+console.log('\n=== 批量排序 / 存储用量 / 多标签同步 / 图片压缩 / PWA ===');
+{
+  const { window } = loadPage('cards.html');
+  const D = window.document;
+  const get = id => D.getElementById(id);
+  const readSt = () => JSON.parse(window.localStorage.getItem('huake_data_v1'));
+  const order = () => Array.prototype.map.call(D.querySelectorAll('#cards .card'), el => el.getAttribute('data-id'));
+
+  // 种子：3 张卡
+  window.eval('state.cards=[' +
+    '{id:"c1",name:"卡一",total:10,used:0,lowWarn:2,note:"",color:"#4f7cff",createdAt:"",image:"",receipts:[],folderId:"",kind:"lesson",price:0,purchasedAt:""},' +
+    '{id:"c2",name:"卡二",total:10,used:0,lowWarn:2,note:"",color:"#4f7cff",createdAt:"",image:"",receipts:[],folderId:"",kind:"lesson",price:0,purchasedAt:""},' +
+    '{id:"c3",name:"卡三",total:10,used:0,lowWarn:2,note:"",color:"#4f7cff",createdAt:"",image:"",receipts:[],folderId:"",kind:"lesson",price:0,purchasedAt:""}];' +
+    'state.history=[]; save();');
+  window.__T.render();
+  ok(order().join(',') === 'c1,c2,c3', '初始顺序 c1,c2,c3');
+
+  // 批量排序：勾选 c3 上移/下移
+  get('btn-manage').click();
+  D.querySelector('#cards .card[data-id="c3"]').click();
+  get('batch-up').click();
+  ok(order().join(',') === 'c1,c3,c2', '勾选 c3 点上移后排到第二位');
+  get('batch-up').click();
+  ok(order().join(',') === 'c3,c1,c2', '再点上移排到第一位');
+  get('batch-down').click();
+  ok(order().join(',') === 'c1,c3,c2', '点下移退回第二位');
+  ok(readSt().cards.map(c => c.id).join(',') === 'c1,c3,c2', '排序结果已写入 localStorage');
+  get('batch-cancel').click();
+  ok(get('batch-bar').classList.contains('hidden'), '退出管理后工具条隐藏');
+
+  // PWA：manifest 链接与文件在位
+  ok(!!D.querySelector('link[rel="manifest"]'), '页面引入 manifest');
+  ok(fs.existsSync(path.join(ROOT, 'manifest.webmanifest')) &&
+     fs.existsSync(path.join(ROOT, 'sw.js')) &&
+     fs.existsSync(path.join(ROOT, 'icon-192.png')) &&
+     fs.existsSync(path.join(ROOT, 'icon-512.png')) &&
+     fs.existsSync(path.join(ROOT, 'icon-maskable-512.png')), 'PWA 文件（manifest/sw/三尺寸图标）齐全');
+
+  // 多标签同步：模拟其他标签写入并派发 storage 事件
+  const other = JSON.parse(window.localStorage.getItem('huake_data_v1'));
+  other.cards.push({ id: 'c9', name: '别处新增', total: 5, used: 0, lowWarn: 1, note: '', color: '#4f7cff', createdAt: '', image: '', receipts: [], folderId: '', kind: 'lesson', price: 0, purchasedAt: '' });
+  other.meta.syncedAt = 'ts-from-other-tab';
+  window.dispatchEvent(new window.StorageEvent('storage', { key: 'huake_data_v1', newValue: JSON.stringify(other) }));
+  ok(window.eval('state.cards.length') === 4, '其他标签的新数据被本标签自动采用');
+  ok(D.querySelectorAll('#cards .card').length === 4, '采用后页面自动重绘');
+  window.eval('state.meta.pendingSync = true; save();');
+  const n = window.eval('state.cards.length');
+  window.dispatchEvent(new window.StorageEvent('storage', { key: 'huake_data_v1', newValue: JSON.stringify(other) }));
+  ok(window.eval('state.cards.length') === n, '本标签有未传改动时不覆盖');
+}
+
+// ---- 2i) 存储用量显示（settings.html） ----
+console.log('\n=== 本地存储用量显示 ===');
+{
+  const { window } = loadPage('settings.html');
+  const D = window.document;
+  window.eval('state.cards=[{id:"c1",name:"卡",total:10,used:0,lowWarn:2,note:"",color:"#4f7cff",createdAt:"",image:"",receipts:[],folderId:"",kind:"lesson",price:0,purchasedAt:""}]; save();');
+  window.__T.render();
+  const t = D.getElementById('storage-usage').textContent;
+  ok(/本地存储已用 \d+\.\d{2} MB/.test(t), '设置页显示本地存储用量：' + t);
+}
+
+// ---- 2j) 图片上传压缩（桩 FileReader；jsdom 无 canvas，验证回退路径） ----
+console.log('\n=== 图片上传压缩 ===');
+{
+  const { window } = loadPage('cards.html');
+  // 同步桩 FileReader：readAsDataURL 立即回调
+  window.FileReader = function () {
+    var self = this;
+    this.readAsDataURL = function () {
+      self.result = 'data:image/png;base64,STUB';
+      if (self.onload) self.onload();
+    };
+  };
+  window.__T.readCardImage({ name: 'small.png', type: 'image/png', size: 1000 });
+  ok(window.eval('cardImageData') === 'data:image/png;base64,STUB', '小图（<300KB）直接采用原图');
+  window.__T.readCardImage({ name: 'big.png', type: 'image/png', size: 500000 });
+  ok(window.eval('cardImageData') === 'data:image/png;base64,STUB', '大图在无 canvas 环境下回退原图且不报错');
 }
 
 // ---- 3) 缺元素页面：settings.html 调用 render 不报错 ----

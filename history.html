@@ -13,6 +13,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
 </head>
 <body>
   <div id="storage-warn" class="storage-warn hidden">⚠️ 当前为临时模式（浏览器无法保存），刷新后数据会丢失。</div>
@@ -36,6 +37,7 @@
       <div class="panel-head">
         <h2>明细</h2>
         <div class="head-right">
+          <input type="search" id="history-search" class="search-input" placeholder="搜索卡名 / 备注" />
           <button id="btn-undo-last" class="btn sm ghost">↩ 撤销最近</button>
           <select id="filter-month" class="select">
             <option value="">全月份</option>

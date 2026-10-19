@@ -1,5 +1,6 @@
-/* 生成划课站点图标 PNG（favicon-32.png / apple-touch-icon.png）
+/* 生成划课站点图标 PNG（favicon-32.png / apple-touch-icon.png / PWA 图标）
    与 favicon.svg 同一套设计：品牌蓝圆角底 + 白色笔记本 + 红色书签/划掉线。
+   opts.pad > 0 时生成 maskable 变体：设计缩小居中，露出的底用品牌纯色铺满。
    纯 Node 手写 PNG 编码（zlib 内置），无第三方依赖。
    用法：node scripts/gen_favicon.js */
 const fs = require('fs');
@@ -50,7 +51,11 @@ function shade(x, y) {
   return [255, 255, 255];
 }
 
-function renderPNG(size, outFile) {
+function renderPNG(size, outFile, opts) {
+  opts = opts || {};
+  const pad = opts.pad || 0;                 // maskable：四周留白比例
+  const s = 1 - pad * 2;                     // 设计缩放
+  const flat = [95, 124, 255];               // 露出的底的品牌纯色
   const px = Buffer.alloc(size * size * 4);
   const S = 3; // 3×3 超采样抗锯齿
   for (let py = 0; py < size; py++) {
@@ -58,10 +63,14 @@ function renderPNG(size, outFile) {
       let r = 0, g = 0, b = 0, a = 0;
       for (let sy = 0; sy < S; sy++) {
         for (let sx = 0; sx < S; sx++) {
-          const x = ((pxi + (sx + 0.5) / S) / size) * 64;
-          const y = ((py + (sy + 0.5) / S) / size) * 64;
+          // 设计空间坐标（64×64），pad 时先归一化再缩放回中心
+          const nx = (pxi + (sx + 0.5) / S) / size;
+          const ny = (py + (sy + 0.5) / S) / size;
+          const x = (nx - 0.5) * 64 / s + 32;
+          const y = (ny - 0.5) * 64 / s + 32;
           const c = shade(x, y);
           if (c) { r += c[0]; g += c[1]; b += c[2]; a += 255; }
+          else if (pad > 0) { r += flat[0]; g += flat[1]; b += flat[2]; a += 255; }
         }
       }
       const n = S * S;
@@ -108,3 +117,6 @@ function renderPNG(size, outFile) {
 
 renderPNG(32, path.join(ROOT, 'favicon-32.png'));
 renderPNG(180, path.join(ROOT, 'apple-touch-icon.png'));
+renderPNG(192, path.join(ROOT, 'icon-192.png'));
+renderPNG(512, path.join(ROOT, 'icon-512.png'));
+renderPNG(512, path.join(ROOT, 'icon-maskable-512.png'), { pad: 0.2 });

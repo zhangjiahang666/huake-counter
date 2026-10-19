@@ -614,6 +614,7 @@ html, body {
 /* ---------- 历史记录副标题 ---------- */
 .hist-sub { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
 .hist-sub .name { color: var(--ink); }
+#storage-usage.warn { color: var(--warn); font-weight: 600; }
 
 /* ---------- 收据条目（图片 / 表格预览） ---------- */
 .att-empty {

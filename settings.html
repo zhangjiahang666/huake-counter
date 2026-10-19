@@ -13,6 +13,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
 </head>
 <body>
   <div id="storage-warn" class="storage-warn hidden">⚠️ 当前为临时模式（浏览器无法保存），刷新后数据会丢失。</div>
@@ -57,6 +58,13 @@
         <div class="head-right">
           <button id="btn-export" class="btn">JSON</button>
           <button id="btn-excel" class="btn">Excel</button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div>
+          <div class="s-label">本地存储</div>
+          <div class="s-desc" id="storage-usage">本地存储已用 0.00 MB（浏览器上限约 5 MB）</div>
         </div>
       </div>
 

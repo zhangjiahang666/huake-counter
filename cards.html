@@ -13,6 +13,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
 </head>
 <body>
   <div id="storage-warn" class="storage-warn hidden">⚠️ 当前为临时模式（浏览器无法保存），刷新后数据会丢失。</div>
@@ -43,6 +44,8 @@
       </div>
       <div id="batch-bar" class="batch-bar hidden">
         <span id="batch-count" class="batch-count">已选 0 张</span>
+        <button id="batch-up" class="btn sm ghost">↑ 上移</button>
+        <button id="batch-down" class="btn sm ghost">↓ 下移</button>
         <button id="batch-all" class="btn sm ghost">全选</button>
         <button id="batch-move" class="btn sm primary" disabled>移动到文件夹</button>
         <button id="batch-cancel" class="btn sm ghost">退出管理</button>
