@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#4f7cff" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="划课" />
+  <title>划课 · 历史记录</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+</head>
+<body>
+  <div id="storage-warn" class="storage-warn hidden">⚠️ 当前为临时模式（浏览器无法保存），刷新后数据会丢失。</div>
+
+  <header class="site-header">
+    <nav class="site-nav">
+      <a class="brand" href="index.html">📒 划课</a>
+      <div class="links">
+        <a href="index.html">仪表盘</a>
+        <a href="cards.html">课时卡</a>
+        <a href="history.html" class="active">历史</a>
+        <a href="settings.html">设置</a>
+      </div>
+    </nav>
+  </header>
+
+  <main class="site-main">
+    <h1 class="page-title">历史记录</h1>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>明细</h2>
+        <div class="head-right">
+          <button id="btn-undo-last" class="btn sm ghost">↩ 撤销最近</button>
+          <select id="filter-month" class="select">
+            <option value="">全月份</option>
+          </select>
+          <select id="filter-card" class="select">
+            <option value="">全部卡片</option>
+          </select>
+        </div>
+      </div>
+      <ul id="history" class="history"></ul>
+      <div id="history-empty" class="empty hidden">
+        <div class="empty-emoji">🕓</div>
+        <div>暂无记录</div>
+        <div class="empty-hint">划掉或加课后，这里会留下明细</div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">划课 · 课时计数器</footer>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="js/cloud-config.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

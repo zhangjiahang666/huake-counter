@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>划课</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6f93ff"/>
+      <stop offset="1" stop-color="#4f7cff"/>
+    </linearGradient>
+  </defs>
+  <!-- 品牌蓝圆角底 -->
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <!-- 笔记本 -->
+  <rect x="20" y="13" width="24" height="38" rx="3" fill="#ffffff"/>
+  <!-- 书脊 -->
+  <rect x="20" y="13" width="6.5" height="38" fill="#e6ecff"/>
+  <!-- 装订环 -->
+  <circle cx="23.2" cy="21" r="1.5" fill="#4f7cff"/>
+  <circle cx="23.2" cy="32" r="1.5" fill="#4f7cff"/>
+  <circle cx="23.2" cy="43" r="1.5" fill="#4f7cff"/>
+  <!-- 课时行 -->
+  <rect x="30.5" y="21" width="10" height="2.4" rx="1.2" fill="#c3d2fb"/>
+  <rect x="30.5" y="27.5" width="10" height="2.4" rx="1.2" fill="#c3d2fb"/>
+  <rect x="30.5" y="34" width="6.5" height="2.4" rx="1.2" fill="#c3d2fb"/>
+  <!-- 划掉的最后一节（红色斜线） -->
+  <rect x="30.5" y="34" width="6.5" height="2.4" rx="1.2" fill="#e5484d" transform="rotate(-8 33.75 35.2)"/>
+  <!-- 红色书签带 -->
+  <path d="M39.5 13 h6 v11.5 l-3 -3 -3 3 z" fill="#e5484d"/>
+</svg>
